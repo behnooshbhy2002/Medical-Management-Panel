@@ -1,0 +1,15 @@
+# ─── داده و پردازش ───
+pandas
+numpy
+scikit-learn
+joblib
+
+# ─── PyTorch (CPU) ───
+torch
+torchvision
+
+# ─── HuggingFace ───
+transformers
+accelerate
+datasets
+tokenizers

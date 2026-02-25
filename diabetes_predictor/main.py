@@ -13,7 +13,7 @@ app = FastAPI(
 # ─────────────────────────────────────────
 # Load pre-trained model and artifacts
 # ─────────────────────────────────────────
-MODEL_DIR = os.getenv("MODEL_DIR", "/app/models")
+MODEL_DIR = os.getenv("MODEL_DIR", "/app/models/diabetes")
 
 try:
     model = joblib.load(os.path.join(MODEL_DIR, "diabetes_model.pkl"))

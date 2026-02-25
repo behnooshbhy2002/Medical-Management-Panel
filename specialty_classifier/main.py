@@ -2,7 +2,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import joblib
 import os
-import re
+import torch
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch.nn.functional as F
 import pika
 import json
 import threading
@@ -13,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Medical Specialty Classifier",
-    description="Classifies medical specialty from prescription or clinical text using a trained model",
-    version="1.0.0"
+    description="Classifies medical specialty from prescription or clinical text using ModernBERT",
+    version="1.1.0"
 )
 
 # ─────────────────────────────────────────
@@ -23,18 +25,32 @@ app = FastAPI(
 MODEL_DIR = os.getenv("MODEL_DIR", "/app/models")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")
 
-pipeline = None
-le = None
+# Global variables
+tokenizer = None
+model = None
 classes = None
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+MAX_LEN = 256   # دقیقاً مثل مرحله آموزش
 
 try:
-    pipeline = joblib.load(os.path.join(MODEL_DIR, "specialty_pipeline.pkl"))
-    le = joblib.load(os.path.join(MODEL_DIR, "specialty_label_encoder.pkl"))
-    classes = joblib.load(os.path.join(MODEL_DIR, "specialty_classes.pkl"))
-    print(f"✅ Specialty classification model loaded ({len(classes)} classes)")
+    model_path = os.path.join(MODEL_DIR, "specialty_modernbert")
+    classes_path = os.path.join(MODEL_DIR, "specialty_classes.pkl")
+
+    logger.info(f"🔄 Loading ModernBERT model from: {model_path}")
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForSequenceClassification.from_pretrained(model_path)
+    
+    model.to(DEVICE)
+    model.eval()
+
+    classes = joblib.load(classes_path)
+
+    logger.info(f"✅ ModernBERT model loaded successfully! "
+                f"({len(classes)} classes) | Device: {DEVICE}")
 except Exception as e:
-    print(f"⚠️ Failed to load model: {e}")
-    pipeline = le = classes = None
+    logger.error(f"⚠️ Failed to load model: {e}")
+    tokenizer = model = classes = None
 
 
 # ─────────────────────────────────────────
@@ -45,35 +61,46 @@ class TextInput(BaseModel):
 
 
 # ─────────────────────────────────────────
-# Text Preprocessing & Prediction
+# Prediction Function (ModernBERT)
 # ─────────────────────────────────────────
-def clean_text(text: str) -> str:
-    """Basic text cleaning: lowercase, remove numbers & punctuation, normalize spaces"""
-    text = text.lower()
-    text = re.sub(r'\d+', ' ', text)               # remove numbers
-    text = re.sub(r'[^\w\s]', ' ', text)           # remove punctuation
-    text = re.sub(r'\s+', ' ', text).strip()       # normalize spaces
-    return text
-
-
 def classify(text: str) -> dict:
-    """Run inference and return top predictions"""
-    if pipeline is None:
+    """Run inference with ModernBERT and return top predictions"""
+    if model is None or tokenizer is None:
         return {"error": "Model not loaded"}
 
-    cleaned = clean_text(text)
-    if not cleaned:
-        return {"error": "Empty text after cleaning"}
+    if not text or not text.strip():
+        return {"error": "Empty text"}
 
-    probs = pipeline.predict_proba([cleaned])[0]
-    top3_idx = probs.argsort()[-3:][::-1]
+    # پیش‌پردازش سبک (دقیقاً مثل مرحله آموزش)
+    cleaned = text.replace("User:", "").strip()
+
+    # Tokenization
+    inputs = tokenizer(
+        cleaned,
+        truncation=True,
+        padding="max_length",
+        max_length=MAX_LEN,
+        return_tensors="pt"
+    ).to(DEVICE)
+
+    # Inference
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits[0]
+        probs = F.softmax(logits, dim=-1)
+
+    # Top-3
+    top3_probs, top3_idx = torch.topk(probs, 3)
 
     return {
-        "predicted_specialty": classes[top3_idx[0]],
-        "confidence": round(float(probs[top3_idx[0]]), 4),
+        "predicted_specialty": classes[top3_idx[0].item()],
+        "confidence": round(float(top3_probs[0].item()), 4),
         "top3": [
-            {"specialty": classes[i], "confidence": round(float(probs[i]), 4)}
-            for i in top3_idx
+            {
+                "specialty": classes[idx.item()],
+                "confidence": round(float(prob.item()), 4)
+            }
+            for prob, idx in zip(top3_probs, top3_idx)
         ],
         "note": "This is a model prediction — clinical judgment should prevail"
     }
@@ -96,8 +123,8 @@ def start_rabbitmq_consumer():
                 if text:
                     result = classify(text)
                     specialty = result.get("predicted_specialty", "unknown")
-                    logger.info(f"[RabbitMQ] Processed prescription → {specialty}")
-                    # Here you could publish result somewhere else if needed
+                    logger.info(f"[RabbitMQ] Processed prescription → {specialty} "
+                                f"(conf: {result.get('confidence', 0)})")
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             except Exception as e:
                 logger.error(f"Error processing RabbitMQ message: {e}")
@@ -109,7 +136,7 @@ def start_rabbitmq_consumer():
             on_message_callback=callback
         )
 
-        logger.info("RabbitMQ consumer started – listening on 'prescription_queue'")
+        logger.info("🐰 RabbitMQ consumer started – listening on 'prescription_queue'")
         channel.start_consuming()
 
     except Exception as e:
@@ -118,7 +145,11 @@ def start_rabbitmq_consumer():
 
 @app.on_event("startup")
 def startup_event():
-    """Start RabbitMQ consumer in background thread on application startup"""
+    """Start RabbitMQ consumer in background thread"""
+    if model is None:
+        logger.warning("Model not loaded – RabbitMQ consumer will not process messages")
+        return
+
     consumer_thread = threading.Thread(
         target=start_rabbitmq_consumer,
         daemon=True,
@@ -133,15 +164,16 @@ def startup_event():
 @app.get("/")
 def root():
     return {
-        "service": "Medical Specialty Classifier",
-        "status": "operational"
+        "service": "Medical Specialty Classifier (ModernBERT)",
+        "status": "operational",
+        "model": "answerdotai/ModernBERT-base (fine-tuned)"
     }
 
 
 @app.post("/classify")
 def classify_text(data: TextInput):
     """
-    Classify medical specialty from input text (prescription, note, etc.)
+    Classify medical specialty from input text (prescription, note, conversation, etc.)
     Returns top prediction + top-3 probabilities
     """
     if not data.text.strip():
@@ -160,10 +192,12 @@ def list_supported_classes():
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint for orchestrators (Kubernetes, Docker Compose, etc.)"""
+    """Health check endpoint"""
     return {
         "status": "ok",
-        "model_loaded": pipeline is not None,
+        "model_loaded": model is not None,
+        "device": str(DEVICE),
         "num_classes": len(classes) if classes is not None else 0,
-        "rabbitmq_configured": bool(RABBITMQ_URL)
+        "rabbitmq_configured": bool(RABBITMQ_URL),
+        "model_type": "ModernBERT (HuggingFace)"
     }

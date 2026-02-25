@@ -63,7 +63,7 @@ services:
     volumes:
       - ./models:/app/models:ro
     environment:
-      MODEL_DIR: /app/models
+      MODEL_DIR: /app/models/diabetes
 
   diabetes_stats:
     build: ./diabetes_stats
