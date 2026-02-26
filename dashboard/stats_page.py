@@ -3,11 +3,9 @@ import time
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-from .helpers import http_get
-from .config import STATS_URL
 
-from config import API_URL, Q_DIABETES, STREAM_INTERVAL
-from helpers import http_post, consume_one, risk_icon, stream_controls, append_log
+from config import STREAM_INTERVAL, STATS_URL
+from helpers import stream_controls, http_get
 
 def show_stats_page():
     st.title("📊 Diabetes Population Statistics")

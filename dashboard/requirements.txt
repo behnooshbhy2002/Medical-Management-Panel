@@ -4,3 +4,5 @@ pandas
 plotly
 uvicorn
 pika>=1.3.2        # RabbitMQ client
+groq
+markdown
