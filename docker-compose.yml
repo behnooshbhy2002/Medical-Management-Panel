@@ -113,7 +113,10 @@ services:
     restart: unless-stopped
     ports:
       - "8501:8501"
+    volumes:
+      - ./data:/app/data:ro
     environment:
+      DB_PATH:      /data/medicines.db
       API_URL:      http://api_gateway:8000
       STATS_URL:    http://diabetes_stats:8000
       DISEASE_URL:  http://specialty_classifier:8000
