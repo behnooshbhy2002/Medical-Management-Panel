@@ -3,6 +3,8 @@ import pika
 import json
 import streamlit as st
 
+from config import RABBITMQ_URL
+
 
 def http_post(url: str, payload: dict, timeout: int = 15):
     """POST to a microservice. Returns (data, error_str)."""
