@@ -22,7 +22,7 @@ app = FastAPI(
 # ─────────────────────────────────────────
 # Configuration & Model Loading
 # ─────────────────────────────────────────
-MODEL_DIR = os.getenv("MODEL_DIR", "/app/models")
+MODEL_DIR = os.getenv("MODEL_DIR", "/app/models/disease")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")
 
 # Global variables

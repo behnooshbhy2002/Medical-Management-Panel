@@ -2,6 +2,7 @@ version: "3.9"
 
 services:
 
+  # ── Infrastructure ──────────────────────────────────────────
   postgres:
     image: postgres:15
     restart: unless-stopped
@@ -24,19 +25,32 @@ services:
     restart: unless-stopped
     ports:
       - "5672:5672"
-      - "15672:15672"   # Management Panel : http://localhost:15672
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 15s
       timeout: 10s
       retries: 5
 
-  # ─────────────────────────────────────────
-  # Main Services
-  # ─────────────────────────────────────────
+  # ── Stream Producer ─────────────────────────────────────────
+  # Reads rows from CSV files every 5 s and publishes to:
+  #   queue.diabetes  <- diabetes_prediction_dataset.csv
+  #   queue.disease   <- medical_conversations.csv
+  #   queue.drug      <- mtsamples.csv
+  stream_producer:
+    build: ./stream_producer
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data:ro
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq/
+      DATA_DIR: /app/data
+      PUBLISH_INTERVAL: "5"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # ── Microservices ───────────────────────────────────────────
   api_gateway:
     build: ./api_gateway
     restart: unless-stopped
@@ -45,10 +59,10 @@ services:
     environment:
       DATABASE_URL: postgresql://admin:secret@postgres/health_db
       RABBITMQ_URL: amqp://guest:guest@rabbitmq/
-      DIABETES_PREDICTOR_URL: http://diabetes_predictor:8000
-      DIABETES_STATS_URL: http://diabetes_stats:8000
+      DIABETES_PREDICTOR_URL:   http://diabetes_predictor:8000
+      DIABETES_STATS_URL:       http://diabetes_stats:8000
       SPECIALTY_CLASSIFIER_URL: http://specialty_classifier:8000
-      DRUG_DETECTOR_URL: http://drug_detector:8000
+      DRUG_DETECTOR_URL:        http://drug_detector:8000
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,7 +77,7 @@ services:
     volumes:
       - ./models:/app/models:ro
     environment:
-      MODEL_DIR: /app/models/diabetes
+      MODEL_DIR:  /app/models/diabetes
 
   diabetes_stats:
     build: ./diabetes_stats
@@ -83,11 +97,8 @@ services:
     volumes:
       - ./models:/app/models:ro
     environment:
-      MODEL_DIR: /app/models
+      MODEL_DIR: /app/models/disease
       RABBITMQ_URL: amqp://guest:guest@rabbitmq/
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
 
   drug_detector:
     build: ./drug_detector
@@ -96,9 +107,6 @@ services:
       - "8004:8000"
     environment:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq/
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
 
   dashboard:
     build: ./dashboard
@@ -106,9 +114,14 @@ services:
     ports:
       - "8501:8501"
     environment:
-      API_URL: http://api_gateway:8000
+      API_URL:      http://api_gateway:8000
+      STATS_URL:    http://diabetes_stats:8000
+      DISEASE_URL:  http://specialty_classifier:8000
+      DRUG_URL:     http://drug_detector:8000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq/
     depends_on:
       - api_gateway
+      - rabbitmq
 
 volumes:
   pg_data:

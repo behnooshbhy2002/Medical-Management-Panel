@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 pika
-transformers
+transformers>=4.38  # or whatever minimum you need; recent versions work well with torch 2.4+
 accelerate
-numpy
 joblib
