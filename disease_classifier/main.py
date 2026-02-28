@@ -14,8 +14,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Medical Specialty Classifier",
-    description="Classifies medical specialty from prescription or clinical text using ModernBERT",
+    title="Medical disease Classifier",
+    description="Classifies medical disease from prescription or clinical text using ModernBERT",
     version="1.1.0"
 )
 
@@ -93,11 +93,11 @@ def classify(text: str) -> dict:
     top3_probs, top3_idx = torch.topk(probs, 3)
 
     return {
-        "predicted_specialty": classes[top3_idx[0].item()],
+        "predicted_disease": classes[top3_idx[0].item()],
         "confidence": round(float(top3_probs[0].item()), 4),
         "top3": [
             {
-                "specialty": classes[idx.item()],
+                "disease": classes[idx.item()],
                 "confidence": round(float(prob.item()), 4)
             }
             for prob, idx in zip(top3_probs, top3_idx)
@@ -122,8 +122,8 @@ def start_rabbitmq_consumer():
                 text = data.get("text", "")
                 if text:
                     result = classify(text)
-                    specialty = result.get("predicted_specialty", "unknown")
-                    logger.info(f"[RabbitMQ] Processed prescription → {specialty} "
+                    disease = result.get("predicted_disease", "unknown")
+                    logger.info(f"[RabbitMQ] Processed prescription → {disease} "
                                 f"(conf: {result.get('confidence', 0)})")
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             except Exception as e:
@@ -164,7 +164,7 @@ def startup_event():
 @app.get("/")
 def root():
     return {
-        "service": "Medical Specialty Classifier (ModernBERT)",
+        "service": "Medical disease Classifier (ModernBERT)",
         "status": "operational",
         "model": "answerdotai/ModernBERT-base (fine-tuned)"
     }
@@ -173,7 +173,7 @@ def root():
 @app.post("/classify")
 def classify_text(data: TextInput):
     """
-    Classify medical specialty from input text (prescription, note, conversation, etc.)
+    Classify medical disease from input text (prescription, note, conversation, etc.)
     Returns top prediction + top-3 probabilities
     """
     if not data.text.strip():

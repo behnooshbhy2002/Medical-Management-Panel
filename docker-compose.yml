@@ -61,7 +61,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq/
       DIABETES_PREDICTOR_URL:   http://diabetes_predictor:8000
       DIABETES_STATS_URL:       http://diabetes_stats:8000
-      SPECIALTY_CLASSIFIER_URL: http://specialty_classifier:8000
+      DISEASE_CLASSIFIER_URL: http://disease_classifier:8000
       DRUG_DETECTOR_URL:        http://drug_detector:8000
     depends_on:
       postgres:
@@ -89,8 +89,8 @@ services:
     environment:
       DATA_PATH: /app/data/diabetes_prediction_dataset.csv
 
-  specialty_classifier:
-    build: ./specialty_classifier
+  disease_classifier:
+    build: ./disease_classifier
     restart: unless-stopped
     ports:
       - "8003:8000"
@@ -119,7 +119,7 @@ services:
       DB_PATH:      /data/medicines.db
       API_URL:      http://api_gateway:8000
       STATS_URL:    http://diabetes_stats:8000
-      DISEASE_URL:  http://specialty_classifier:8000
+      DISEASE_URL:  http://disease_classifier:8000
       DRUG_URL:     http://drug_detector:8000
       RABBITMQ_URL: amqp://guest:guest@rabbitmq/
     depends_on:

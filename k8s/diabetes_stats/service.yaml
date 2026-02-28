@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: diabetes-stats-service
+  namespace: medical
+spec:
+  selector:
+    app: diabetes-stats
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

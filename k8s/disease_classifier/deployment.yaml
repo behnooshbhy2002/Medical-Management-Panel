@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: disease-classifier
+  namespace: medical
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: disease-classifier
+  template:
+    metadata:
+      labels:
+        app: disease-classifier
+    spec:
+      initContainers:
+        - name: wait-for-rabbitmq
+          image: busybox
+          command: ['sh', '-c', 'until nc -z rabbitmq-service 5672; do echo waiting for rabbitmq...; sleep 2; done']
+      containers:
+        - name: disease-classifier
+          image: medical/disease_classifier:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MODEL_DIR
+              value: /app/models/disease
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: medical-secrets
+                  key: RABBITMQ_URL
+          volumeMounts:
+            - name: models-volume
+              mountPath: /app/models
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: models-volume
+          hostPath:
+            path: "/run/desktop/mnt/host/d/University-Master/Term-3/Cloud Computing/PRO/Medical-Management-Panel/models"   # ← مسیر models روی سیستمت رو اینجا بذار
+            type: Directory

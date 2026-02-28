@@ -26,7 +26,7 @@ st.sidebar.title("🏥 Health AI")
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
     "Section",
-    ["🔬 Diabetes", "🧬 Disease", "💊 Drug", "📊 Stats", "📋 History"],
+    ["🔬 Diabetes", "🧬 Disease", "💊 Drug", "📊 Stats"],
     label_visibility="collapsed",
 )
 st.sidebar.markdown("---")
@@ -49,6 +49,3 @@ elif page == "💊 Drug":
 elif page == "📊 Stats":
     from stats_page import show_stats_page
     show_stats_page()
-elif page == "📋 History":
-    from history_page import show_history_page
-    show_history_page()

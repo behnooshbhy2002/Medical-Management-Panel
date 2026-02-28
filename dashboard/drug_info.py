@@ -72,7 +72,7 @@ def display_medicine_card(drug_name: str):
 
             st.divider()
             st.markdown("**🟢 Uses / Indications**")
-            st.write(info["uses"] or "اطلاعات موجود نیست")
+            st.write(info["uses"] or "No inFormation")
 
             st.markdown("**🔴 Common Side Effects**")
             if info["side_effects"]:

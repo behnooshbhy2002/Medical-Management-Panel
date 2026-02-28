@@ -38,7 +38,7 @@ def show_disease_page():
                             f"<div style='font-size:22px;font-weight:bold;"
                             f"color:#2c3e50;padding:15px;background:#eaf4fb;"
                             f"border-radius:10px;text-align:center;'>"
-                            f"🦠 {result['predicted_specialty']}</div>",
+                            f"🦠 {result['predicted_disease']}</div>",
                             unsafe_allow_html=True,
                         )
                         st.metric("Model confidence", f"{conf:.1f}%")
@@ -47,7 +47,7 @@ def show_disease_page():
                         st.subheader("📊 Top 3 Candidates")
                         top3 = result.get("top3", [])
                         if top3:
-                            names = [t["specialty"]          for t in top3]
+                            names = [t["disease"]          for t in top3]
                             confs = [t["confidence"] * 100 for t in top3]
                             fig = go.Figure(go.Bar(
                                 x=confs, y=names, orientation="h",
@@ -120,7 +120,7 @@ def show_disease_page():
                     append_log("log_disease", {
                         "text_short":  msg["text"][:60] + "...",
                         "ground_truth":msg.get("ground_truth", ""),
-                        "predicted":   result["predicted_specialty"],
+                        "predicted":   result["predicted_disease"],
                         "confidence":  result["confidence"],
                     })
             else:

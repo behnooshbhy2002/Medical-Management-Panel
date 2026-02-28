@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medical-config
+  namespace: medical
+data:
+  PUBLISH_INTERVAL: "5"
+  DATA_DIR: /app/data
+  MODEL_DIR_DIABETES: /app/models/diabetes
+  MODEL_DIR_DISEASE: /app/models/disease
+  API_URL: http://api-gateway-service:8000
+  STATS_URL: http://diabetes-stats-service:8000
+  DISEASE_URL: http://disease-classifier-service:8000
+  DRUG_URL: http://drug-detector-service:8000

@@ -9,10 +9,8 @@ from collections import deque
 import numpy as np
 from collections import defaultdict
 
-
-from config import STREAM_INTERVAL, STATS_URL
-from helpers import stream_controls, http_get
-RABBITMQ_URL = "amqp://guest:guest@rabbitmq/"
+from config import STREAM_INTERVAL, STATS_URL, RABBITMQ_URL, Q_DIABETES
+from helpers import stream_controls, http_get, consume_one
 
 def fetch_new_diabetes_messages(max_messages=15):
     new_rows = []
@@ -55,10 +53,10 @@ def update_local_stats(rows):
         age     = row.get("age", 40.0)
         gender  = str(row.get("gender", "Male")).strip().lower()
         htn     = row.get("hypertension", 0)
-        gender = str(row.get("gender", "Male")).strip().lower()
+        gender  = str(row.get("gender", "Male")).strip().lower()
         smoking = str(row.get("smoking_history", "No Info")).strip().lower()
 
-        # منطق تشخیص دیابت ← اینجا می‌تونی تغییر بدی یا مدل واقعی استفاده کنی
+        # Diabetes detection logic → you can change this or use a real model here
         is_diabetic = hba1c >= 6.5 or glucose >= 126 or (bmi >= 30 and hba1c >= 5.7)
 
         if is_diabetic:
@@ -77,13 +75,12 @@ def update_local_stats(rows):
             # smoking
             s["smoking_diab"][smoking] += 1
             
-            # سن
+            # age
             s["ages_diab"].append(age)
             
             # glucose
             s["sum_glucose_d"] += glucose
             s["count_glucose_d"] += 1
-
 
         else:
             s["count_h"] += 1
@@ -123,7 +120,7 @@ def compute_display_stats():
         "healthy_f": s["count_f_healthy"],
         "healthy_m": s["count_m_healthy"],
         
-        "smoking_diab": dict(s["smoking_diab"]),   # برای نمودار
+        "smoking_diab": dict(s["smoking_diab"]),   # for chart
         "smoking_healthy": dict(s["smoking_healthy"]),
         
         "htn_diab_pct": 100.0 * s["count_htn_diab"] / (s["count_d"] or 1),
@@ -138,7 +135,7 @@ def show_stats_page():
     if "live_patients" not in st.session_state:
         st.session_state.live_patients = deque(maxlen=5000)
         st.session_state.live_stats = {
-            "count_total":0,
+            "count_total": 0,
             "count_diabetic": 0,
             "sum_bmi_d": 0.0,
             "sum_bmi_h": 0.0,
@@ -146,25 +143,20 @@ def show_stats_page():
             "count_h": 0,
             "sum_hba1c_d": 0.0,
             "sum_age_d": 0.0,
-            # قبلی‌ها ...
             "count_f_diab": 0,
             "count_m_diab": 0,
             "count_f_healthy": 0,
             "count_m_healthy": 0,
             
-            # smoking - بهتر است شمارنده جداگانه داشته باشیم
-            "smoking_diab": defaultdict(int),     # مثلاً {"never": 12, "current": 5, ...}
+            "smoking_diab": defaultdict(int),
             "smoking_healthy": defaultdict(int),
             
-            # سن - برای توزیع بهتر است چند bin داشته باشیم یا لیست نگه داریم
-            "ages_diab": [],          # لیست سن دیابتی‌ها (برای هیستوگرام)
-            "ages_healthy": [],       # لیست سن سالم‌ها
+            "ages_diab": [],
+            "ages_healthy": [],
             
-            # hypertension
             "count_htn_diab": 0,
             "count_htn_healthy": 0,
             
-            # میانگین glucose
             "sum_glucose_d": 0.0,
             "sum_glucose_h": 0.0,
             "count_glucose_d": 0,
@@ -172,6 +164,7 @@ def show_stats_page():
         }
         st.session_state.history = []        
         st.session_state.run_stream = False
+
     tab_m, tab_s = st.tabs(["✏️ Snapshot", "📡 Live Stream"])
 
     # ── Snapshot ─────────────────────────────────────────────
@@ -186,7 +179,7 @@ def show_stats_page():
 
             ov = data["overview"]
             
-            # ردیف اول - معیارهای اصلی
+            # First row - main metrics
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Total patients",     f"{ov['total_patients']:,}")
             k2.metric("Diabetic",           f"{ov['diabetic_count']:,}")
@@ -195,16 +188,16 @@ def show_stats_page():
 
             st.divider()
 
-            # ردیف دوم - میانگین‌های مهم
+            # Second row - important averages
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Avg Age - Diabetic",  f"{data['age']['diabetic_mean_age']:.1f} سال")
-            m2.metric("Avg Age - Healthy",   f"{data['age']['healthy_mean_age']:.1f} سال")
+            m1.metric("Avg Age - Diabetic",  f"{data['age']['diabetic_mean_age']:.1f} years")
+            m2.metric("Avg Age - Healthy",   f"{data['age']['healthy_mean_age']:.1f} years")
             m3.metric("Avg BMI - Diabetic",  f"{data['bmi']['diabetic_mean']:.1f}")
             m4.metric("Avg BMI - Healthy",   f"{data['bmi']['healthy_mean']:.1f}")
 
             st.divider()
 
-            # نمودارها و توزیع‌ها
+            # Charts & distributions
             c1, c2 = st.columns(2)
             with c1:
                 # BMI comparison
@@ -213,8 +206,8 @@ def show_stats_page():
                     "Mean BMI": [data["bmi"]["diabetic_mean"], data["bmi"]["healthy_mean"]],
                 })
                 fig_bmi = px.bar(bmi_df, x="Group", y="Mean BMI", color="Group",
-                                color_discrete_sequence=["#e74c3c", "#27ae60"],
-                                title="میانگین BMI")
+                                 color_discrete_sequence=["#e74c3c", "#27ae60"],
+                                 title="Average BMI")
                 st.plotly_chart(fig_bmi, use_container_width=True)
 
             with c2:
@@ -224,43 +217,43 @@ def show_stats_page():
                     "Mean HbA1c": [data["hba1c"]["diabetic_mean"], data["hba1c"]["healthy_mean"]],
                 })
                 fig_hba = px.bar(hba_df, x="Group", y="Mean HbA1c", color="Group",
-                                color_discrete_sequence=["#e74c3c", "#27ae60"],
-                                title="میانگین HbA1c")
+                                 color_discrete_sequence=["#e74c3c", "#27ae60"],
+                                 title="Average HbA1c")
                 st.plotly_chart(fig_hba, use_container_width=True)
 
-            st.subheader("توزیع سنی")
+            st.subheader("Age Distribution")
             age_dist = data["age"]["age_distribution"]
             age_df = pd.DataFrame({
-                "گروه سنی": list(age_dist.keys()),
-                "تعداد": list(age_dist.values()),
+                "Age Group": list(age_dist.keys()),
+                "Count": list(age_dist.values()),
             })
-            fig_age = px.pie(age_df, names="گروه سنی", values="تعداد",
-                            hole=0.4, title="توزیع سنی کل جمعیت")
+            fig_age = px.pie(age_df, names="Age Group", values="Count",
+                             hole=0.4, title="Overall Age Distribution")
             st.plotly_chart(fig_age, use_container_width=True)
 
-            # جنسیت
-            st.subheader("توزیع جنسیتی بیماران دیابتی")
+            # Gender
+            st.subheader("Gender Distribution - Diabetic Patients")
             gender_d = data["gender_distribution"]["diabetic_by_gender"]
             gender_df = pd.DataFrame({
-                "جنسیت": list(gender_d.keys()),
-                "تعداد": list(gender_d.values()),
+                "Gender": list(gender_d.keys()),
+                "Count": list(gender_d.values()),
             })
-            fig_gender = px.pie(gender_df, names="جنسیت", values="تعداد",
-                                title="جنسیت بیماران دیابتی", hole=0.3)
+            fig_gender = px.pie(gender_df, names="Gender", values="Count",
+                                title="Gender of Diabetic Patients", hole=0.3)
             fig_gender.update_traces(textinfo="percent+label")
             st.plotly_chart(fig_gender, use_container_width=True)
 
-            # درصدهای دیگر (comorbidities, obesity, smoking, ...)
+            # Other percentages (comorbidities, obesity, smoking, ...)
             cols = st.columns(3)
             with cols[0]:
-                st.metric("چاقی در دیابتی‌ها", f"{data['bmi']['diabetic_obesity_percent']}%")
-                st.metric("چاقی شدید", f"{data['bmi']['diabetic_severe_obesity_percent']}%")
+                st.metric("Obesity in Diabetics", f"{data['bmi']['diabetic_obesity_percent']}%")
+                st.metric("Severe Obesity", f"{data['bmi']['diabetic_severe_obesity_percent']}%")
             with cols[1]:
-                st.metric("فشارخون در دیابتی‌ها", f"{data['comorbidities']['diabetic_hypertension_percent']}%")
-                st.metric("بیماری قلبی در دیابتی‌ها", f"{data['comorbidities']['diabetic_heart_disease_percent']}%")
+                st.metric("Hypertension in Diabetics", f"{data['comorbidities']['diabetic_hypertension_percent']}%")
+                st.metric("Heart Disease in Diabetics", f"{data['comorbidities']['diabetic_heart_disease_percent']}%")
             with cols[2]:
-                st.metric("HbA1c بالای آستانه", f"{data['hba1c']['diabetic_above_threshold_percent']}%")
-                st.metric("درصد سیگاری‌های فعلی (دیابتی)", f"{data['smoking']['diabetic_smoking_current_percent']}%")
+                st.metric("HbA1c Above Threshold", f"{data['hba1c']['diabetic_above_threshold_percent']}%")
+                st.metric("Current Smokers (Diabetics)", f"{data['smoking']['diabetic_smoking_current_percent']}%")
 
     # ── Live Stream ──────────────────────────────────────────
     with tab_s:
@@ -274,8 +267,6 @@ def show_stats_page():
             st.session_state.run_stream = False
             st.rerun()
 
-        # Fragment فقط همین بخش رو rerun میکنه، نه کل صفحه رو
-        # run_every=4 یعنی هر ۴ ثانیه خودش آپدیت میشه وقتی run_stream=True باشه
         @st.fragment(run_every=4 if st.session_state.get("run_stream", False) else None)
         def _live_panel():
             if not st.session_state.get("run_stream", False):
@@ -283,6 +274,7 @@ def show_stats_page():
                 return
 
             new_rows = fetch_new_diabetes_messages(max_messages=10)
+            # new_rows = consume_one(Q_DIABETES)
             update_local_stats(new_rows)
 
             stats = compute_display_stats()
@@ -312,13 +304,13 @@ def show_stats_page():
             k3.metric("Avg BMI (D)", f"{stats['bmi_d_avg']:.1f}")
             k4.metric("Avg HbA1c (D)", f"{stats['hba1c_d_avg']:.1f}")
 
-            # روند نرخ دیابت
+            # Diabetes rate trend
             fig = go.Figure()
             fig.add_trace(go.Scatter(y=df_hist["rate"], mode="lines", line_color="#e74c3c"))
             fig.update_layout(height=280, title="Diabetes Rate Trend")
             st.plotly_chart(fig, use_container_width=True, key="chart_trend")
 
-            # ── نمودارهای پایینی ────────
+            # ── Lower charts ────────
             c_gen, c_smoke, c_age = st.columns(3)
 
             with c_gen:
@@ -329,7 +321,7 @@ def show_stats_page():
                 fig_gender.add_trace(go.Scatter(
                     y=df_hist["diab_m"], name="Diabetic Male", line_color="#3498db", mode="lines+markers"
                 ))
-                fig_gender.update_layout(title="تعداد دیابتی‌ها بر اساس جنسیت", height=280)
+                fig_gender.update_layout(title="Diabetic Count by Gender", height=280)
                 st.plotly_chart(fig_gender, use_container_width=True, key="chart_gender")
 
             with c_smoke:

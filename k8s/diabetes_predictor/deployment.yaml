@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diabetes-predictor
+  namespace: medical
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: diabetes-predictor
+  template:
+    metadata:
+      labels:
+        app: diabetes-predictor
+    spec:
+      containers:
+        - name: diabetes-predictor
+          image: medical/diabetes_predictor:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MODEL_DIR
+              value: /app/models/diabetes
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: medical-secrets
+                  key: RABBITMQ_URL
+          volumeMounts:
+            - name: models-volume
+              mountPath: /app/models
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: models-volume
+          hostPath:
+            path: "/run/desktop/mnt/host/d/University-Master/Term-3/Cloud Computing/PRO/Medical-Management-Panel/models"   # ← مسیر models روی سیستمت رو اینجا بذار
+            type: Directory

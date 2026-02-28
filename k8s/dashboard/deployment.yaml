@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: medical
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      initContainers:
+        - name: wait-for-api-gateway
+          image: busybox
+          command: ['sh', '-c', 'until nc -z api-gateway-service 8000; do echo waiting for api-gateway...; sleep 2; done']
+        - name: wait-for-rabbitmq
+          image: busybox
+          command: ['sh', '-c', 'until nc -z rabbitmq-service 5672; do echo waiting for rabbitmq...; sleep 2; done']
+      containers:
+        - name: dashboard
+          image: medical/dashboard:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8501
+          env:
+            - name: API_URL
+              value: http://api-gateway-service:8000
+            - name: STATS_URL
+              value: http://diabetes-stats-service:8000
+            - name: DISEASE_URL
+              value: http://disease-classifier-service:8000
+            - name: DRUG_URL
+              value: http://drug-detector-service:8000
+            - name: RABBITMQ_URL
+              value: "amqp://guest:guest@rabbitmq-service/"
+            - name: DB_PATH
+              value: /data/medicines.db
+          volumeMounts:
+            - name: data-volume
+              mountPath: /app/data
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8501
+            initialDelaySeconds: 20
+            periodSeconds: 10
+      volumes:
+        - name: data-volume
+          hostPath:
+            path: "/run/desktop/mnt/host/d/University-Master/Term-3/Cloud Computing/PRO/Medical-Management-Panel/data"   # ← مسیر data روی سیستمت رو اینجا بذار
+            type: Directory

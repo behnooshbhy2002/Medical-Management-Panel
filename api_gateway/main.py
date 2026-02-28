@@ -24,7 +24,7 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")
 SERVICES = {
     "diabetes_predictor": os.getenv("DIABETES_PREDICTOR_URL", "http://diabetes_predictor:8000"),
     "diabetes_stats": os.getenv("DIABETES_STATS_URL", "http://diabetes_stats:8000"),
-    "specialty_classifier": os.getenv("SPECIALTY_CLASSIFIER_URL", "http://specialty_classifier:8000"),
+    "disease_classifier": os.getenv("DISEASE_CLASSIFIER_URL", "http://disease_classifier:8000"),
     "drug_detector": os.getenv("DRUG_DETECTOR_URL", "http://drug_detector:8000"),
 }
 
@@ -155,7 +155,7 @@ async def diabetes_stats():
 async def analyze_prescription(data: PrescriptionData):
     """
     Analyze medical prescription:
-    - Classify medical specialty
+    - Classify medical disease
     - Extract medications
     (using both direct HTTP and RabbitMQ approaches)
     """
@@ -165,8 +165,8 @@ async def analyze_prescription(data: PrescriptionData):
     # Direct HTTP calls (synchronous result)
     async with httpx.AsyncClient(timeout=30) as client:
         try:
-            specialty_task = client.post(
-                f"{SERVICES['specialty_classifier']}/classify",
+            disease_task = client.post(
+                f"{SERVICES['disease_classifier']}/classify",
                 json={"text": data.text}
             )
             drug_task = client.post(
@@ -174,12 +174,12 @@ async def analyze_prescription(data: PrescriptionData):
                 json={"text": data.text}
             )
 
-            specialty_resp, drug_resp = await asyncio.gather(specialty_task, drug_task)
-            specialty_resp.raise_for_status()
+            disease_resp, drug_resp = await asyncio.gather(disease_task, drug_task)
+            disease_resp.raise_for_status()
             drug_resp.raise_for_status()
 
             result = {
-                "specialty": specialty_resp.json(),
+                "disease": disease_resp.json(),
                 "drugs": drug_resp.json(),
             }
         except httpx.RequestError as e:
